@@ -37,6 +37,10 @@ if (command === "build") {
   writeFileSync(join("dist", "index.json"), `${JSON.stringify(result.index, null, 2)}\n`);
   writeFileSync(join("dist", "ROUTER.md"), result.markdown);
   console.log(`Indexed ${result.index.length} skills -> dist/index.json, dist/ROUTER.md`);
+  if (result.unplaced.length > 0) {
+    console.error(`\n${result.unplaced.length} skills not placed in taxonomy.yml:`);
+    for (const name of result.unplaced) console.error(`  - ${name}`);
+  }
 } else if (command === "context") {
   console.log(detectContext(cwd));
 } else if (command === "ls") {

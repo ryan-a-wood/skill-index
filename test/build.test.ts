@@ -64,3 +64,54 @@ test("tolerates an empty or malformed taxonomy", () => {
     }
   });
 });
+
+test("reports every skill the taxonomy does not place", () => {
+  withRoot((root) => {
+    writeSkill(root, "tdd", "name: tdd\ndescription: x\n");
+    writeSkill(root, "linear-planning", "name: linear-planning\ndescription: x\n");
+
+    const { unplaced, markdown } = buildIndex({ roots: [root], lockfile: {}, taxonomy: "" });
+
+    assert.deepEqual(unplaced, ["linear-planning", "tdd"]);
+    assert.match(markdown, /## Unplaced/);
+    assert.match(markdown, /- \*\*linear-planning\*\*/);
+  });
+});
+
+test("a catalog entry places a skill", () => {
+  withRoot((root) => {
+    writeSkill(root, "tdd", "name: tdd\ndescription: x\n");
+    writeSkill(root, "wrangler", "name: wrangler\ndescription: x\n");
+
+    const { unplaced } = buildIndex({
+      roots: [root],
+      lockfile: {},
+      taxonomy: 'catalog:\n  - title: Platform\n    skills:\n      - "wrangler - deploy to Cloudflare"\n',
+    });
+
+    assert.deepEqual(unplaced, ["tdd"]);
+  });
+});
+
+test("a flow step places a skill, and opsx names map to their skill name", () => {
+  withRoot((root) => {
+    writeSkill(root, "tdd", "name: tdd\ndescription: x\n");
+    writeSkill(root, "openspec-propose", "name: openspec-propose\ndescription: x\n");
+
+    const { unplaced } = buildIndex({
+      roots: [root],
+      lockfile: {},
+      taxonomy: [
+        "flows:",
+        "  - id: f",
+        "    title: F",
+        "    steps:",
+        '      - "`/tdd` - build test-first"',
+        '      - "`/opsx:propose` - plan"',
+        "",
+      ].join("\n"),
+    });
+
+    assert.deepEqual(unplaced, []);
+  });
+});
