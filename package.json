@@ -1,0 +1,24 @@
+{
+  "name": "skill-index",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "skill-index": "./bin/cli.ts"
+  },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.ts'",
+    "typecheck": "tsc",
+    "build": "node bin/cli.ts build",
+    "install:skills": "node bin/sync-skills.ts",
+    "sync:skills": "node bin/sync-skills.ts",
+    "ls": "node bin/cli.ts ls"
+  },
+  "dependencies": {
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
