@@ -12,7 +12,8 @@
     "build": "node bin/cli.ts build",
     "install:skills": "node bin/sync-skills.ts",
     "sync:skills": "node bin/sync-skills.ts",
-    "ls": "node bin/cli.ts ls"
+    "ls": "node bin/cli.ts ls",
+    "eval": "node bin/cli.ts eval"
   },
   "dependencies": {
     "yaml": "^2.6.0"

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildIndex } from "../src/build.ts";
+import { buildIndex, parseTaxonomy, triggerTexts } from "../src/build.ts";
 import { withRoot, writeSkill } from "./support.ts";
 
 const taxonomy = [
@@ -63,6 +63,34 @@ test("tolerates an empty or malformed taxonomy", () => {
       assert.equal(result.markdown.includes("## Start here"), false);
     }
   });
+});
+
+test("triggerTexts pairs each placed skill with the text that triggers it", () => {
+  const taxonomy = parseTaxonomy(
+    [
+      "catalog:",
+      "  - title: Platform",
+      '    skills:',
+      '      - "wrangler - deploy to Cloudflare from the terminal"',
+      "flows:",
+      "  - id: f",
+      "    title: F",
+      "    steps:",
+      '      - "`/tdd` - build a behaviour test-first"',
+      "",
+    ].join("\n"),
+  );
+
+  const texts = triggerTexts(taxonomy);
+
+  assert.equal(
+    texts.find((t) => t.name === "wrangler")?.text,
+    "deploy to Cloudflare from the terminal",
+  );
+  assert.equal(
+    texts.find((t) => t.name === "tdd")?.text,
+    "`/tdd` - build a behaviour test-first",
+  );
 });
 
 test("reports every skill the taxonomy does not place", () => {

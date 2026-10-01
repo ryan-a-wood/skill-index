@@ -114,6 +114,37 @@ export function parseTaxonomy(source: string): Taxonomy {
  * Names referenced by a slash command in prose. `/opsx:propose` is the same
  * skill as `openspec-propose`, so normalize the two spellings together.
  */
+/**
+ * Each placed skill paired with the hand-authored text that triggers it. This
+ * is the material a ranker should match against, not the index description:
+ * the taxonomy says when to reach for a skill, the description says what it is.
+ */
+export function triggerTexts(taxonomy: Taxonomy): { name: string; text: string }[] {
+  const byName = new Map<string, string[]>();
+  const add = (name: string, text: string): void => {
+    const existing = byName.get(name);
+    if (existing) existing.push(text);
+    else byName.set(name, [text]);
+  };
+
+  for (const group of taxonomy.catalog) {
+    for (const line of group.skills) {
+      const [head, ...rest] = line.split(" - ");
+      const name = head!.trim();
+      const trigger = rest.join(" - ").trim();
+      add(name, trigger || line);
+    }
+  }
+
+  for (const flow of taxonomy.flows) {
+    for (const step of flow.steps) {
+      for (const name of collectReferencedNames(step)) add(name, step);
+    }
+  }
+
+  return [...byName].map(([name, texts]) => ({ name, text: texts.join(" ") }));
+}
+
 function skillNameFromCommand(token: string): string {
   return token.startsWith("opsx:") ? `openspec-${token.slice("opsx:".length)}` : token;
 }
