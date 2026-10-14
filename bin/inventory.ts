@@ -96,7 +96,9 @@ export function collect(home = homedir(), repoRoot = resolve(dirname(fileURLToPa
     const [name, marketplace = ""] = id.split("@");
     const installPath: string = installs[0]?.installPath ?? "";
     if (existsSync(installPath)) pluginRoots.push([realpathSync(installPath) + "/", name]);
-    add({ kind: "Plugin", name, harnesses: ["Claude Code"], path: tilde(installs[0]?.installPath ?? ""), source: marketplace });
+    // A plugin whose hooks are a module is a mod, however it was installed.
+    const kind = readJson(join(installPath, "hooks", "hooks.json"))?.modules ? "Mod" : "Plugin";
+    add({ kind, name, harnesses: ["Claude Code"], path: tilde(installPath), source: marketplace });
   }
 
   // Skills. Same priority as sync-skills: repo, then ~/.agents, then the harness roots.

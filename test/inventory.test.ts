@@ -26,8 +26,14 @@ function fakeHome(): string {
   const pluginPath = join(home, ".claude/plugins/cache/official/superpowers/6.4.1");
   write(".claude/plugins/cache/official/superpowers/6.4.1/skills/brainstorming/SKILL.md", "x");
   symlinkSync(join(pluginPath, "skills/brainstorming"), join(home, ".config/opencode/skills/brainstorming"));
+  // An installed plugin that is a hooks module is a mod.
+  const bandPath = join(home, ".claude/plugins/cache/claude-kit/session-band/0.2.0");
+  write(".claude/plugins/cache/claude-kit/session-band/0.2.0/hooks/hooks.json", { modules: ["./register.tsx"] });
   write(".claude/plugins/installed_plugins.json", {
-    plugins: { "superpowers@claude-plugins-official": [{ installPath: pluginPath, version: "6.4.1" }] },
+    plugins: {
+      "superpowers@claude-plugins-official": [{ installPath: pluginPath, version: "6.4.1" }],
+      "session-band@claude-kit": [{ installPath: bandPath, version: "0.2.0" }],
+    },
   });
   write(".config/opencode/plugins/herdr.js", "");
   write(".claude/dev-mods/session-1/savvy-progress/.claude-plugin/plugin.json", {
@@ -67,6 +73,9 @@ test("collects skills, plugins, mods and MCP servers with harnesses", () => {
   assert.equal(byId["Skill:brainstorming"], undefined, "plugin skills are not listed separately");
   assert.deepEqual(byId["Plugin:herdr"].harnesses, ["opencode"]);
 
+  assert.equal(byId["Plugin:session-band"], undefined);
+  assert.equal(byId["Mod:session-band"].source, "claude-kit");
+  assert.deepEqual(byId["Mod:session-band"].harnesses, ["Claude Code"]);
   assert.equal(byId["Mod:savvy-progress"].path, "~/.claude/dev-mods/session-1/savvy-progress");
 
   assert.deepEqual(byId["MCP server:chrome-devtools"].harnesses, ["Claude Code", "opencode"]);
@@ -82,6 +91,7 @@ test("collects skills, plugins, mods and MCP servers with harnesses", () => {
       "Plugin:herdr",
       "Plugin:superpowers",
       "Mod:savvy-progress",
+      "Mod:session-band",
       "MCP server:chrome-devtools",
       "MCP server:linear",
       "MCP server:proj-only",
