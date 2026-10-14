@@ -3,20 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "skill-index": "./bin/cli.ts"
-  },
   "scripts": {
-    "test": "node --test 'test/**/*.test.ts'",
     "typecheck": "tsc",
-    "build": "node bin/cli.ts build",
-    "install:skills": "node bin/sync-skills.ts",
+    "test": "node --test \"test/*.test.ts\"",
     "sync:skills": "node bin/sync-skills.ts",
-    "ls": "node bin/cli.ts ls",
-    "eval": "node bin/cli.ts eval"
-  },
-  "dependencies": {
-    "yaml": "^2.6.0"
+    "inventory": "node bin/inventory.ts",
+    "inventory:check": "node bin/inventory.ts --check",
+    "inventory:synced": "node bin/inventory.ts --mark-synced"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
