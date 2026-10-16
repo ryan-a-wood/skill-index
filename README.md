@@ -19,3 +19,5 @@ The catalogue of what's installed, and how the pieces fit together, lives in Not
 - `npm run inventory:synced`: record the current snapshot as reconciled.
 
 A daily scheduled task ("Reconcile toolkit inventory") updates the Notion database and marks it synced. A SessionStart hook running `inventory:check` flags drift in between.
+
+Setting this up on another machine: see [docs/work-laptop-handoff.md](docs/work-laptop-handoff.md).
