@@ -20,4 +20,4 @@ The catalogue of what's installed, and how the pieces fit together, lives in Not
 
 A daily scheduled task ("Reconcile toolkit inventory") updates the Notion database and marks it synced. A SessionStart hook running `inventory:check` flags drift in between.
 
-Setting this up on another machine: see [docs/work-laptop-handoff.md](docs/work-laptop-handoff.md).
+Setting this up on another machine: see [docs/work-laptop-handoff.md](docs/work-laptop-handoff.md), and [docs/skill-interchange.md](docs/skill-interchange.md) for the Skill Interchange page.

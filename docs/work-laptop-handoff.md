@@ -125,3 +125,7 @@ A fresh machine has no `~/.agents/.toolkit-inventory.synced.json`, so `--check` 
 - `update-config`: add the SessionStart hook to `~/.claude/settings.json` safely.
 - `writing-for-agents`: when editing the global `CLAUDE.md` line or the task prompt.
 - `wizard`: if the Notion connector and workspace setup needs steps only the user can do.
+
+## Also on the work laptop
+
+The Skill Interchange page (a "which skill next" map) is separate from this flow. To recreate it, see [`skill-interchange.md`](skill-interchange.md).

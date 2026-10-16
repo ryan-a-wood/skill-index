@@ -1,0 +1,474 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Skill Interchange</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&display=swap">
+<style>
+/* Layout: highway guide map. Situation picker on top, the main line as a vertical road with forks, a sticky "next exit" sign beside it. Sign colours follow US road-sign roles. */
+:root {
+  --bg: #eceeea;
+  --surface: #f7f8f5;
+  --fg: #1c221f;
+  --muted: #59625d;
+  --rule: #cdd2cd;
+  --green: #0a6638;   /* guide: main flow */
+  --blue: #1d4c96;    /* services: on-ramps */
+  --orange: #b9520c;  /* construction: upkeep */
+  --brown: #6a4a2d;   /* recreation: standalone */
+  --yellow: #e9b200;  /* warning: phase boundaries */
+  --purple: #5a3a8a;  /* toll lanes: platform and tooling */
+  --on-yellow: #1b1b16;
+  --edge: rgba(255,255,255,.88);
+  --display: "Overpass", "Highway Gothic", "Arial Narrow", system-ui, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151917; --surface: #1d2220; --fg: #e5e9e6; --muted: #98a19c; --rule: #333a36;
+  --green: #138449; --blue: #3567bb; --orange: #cf6a1c; --brown: #84603f; --yellow: #f0c21a; --purple: #7b58b8;
+  --edge: rgba(255,255,255,.8); color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #151917; --surface: #1d2220; --fg: #e5e9e6; --muted: #98a19c; --rule: #333a36;
+  --green: #138449; --blue: #3567bb; --orange: #cf6a1c; --brown: #84603f; --yellow: #f0c21a; --purple: #7b58b8;
+  --edge: rgba(255,255,255,.8); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 400 15px/1.5 var(--display); }
+.wrap { max-width: 1200px; margin: 0 auto; padding-block: 28px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font-weight: 800; font-size: clamp(28px, 4vw, 40px); letter-spacing: -.01em; line-height: 1.1; }
+h2 { font-weight: 800; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 62ch; margin-top: 8px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 24px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 14px; border-radius: 3px; background: var(--c); box-shadow: inset 0 0 0 1.5px var(--edge); }
+
+/* Signs */
+.sign { --c: var(--green); font: 800 15px/1 var(--display); color: #fff; background: var(--c); border: 0; border-radius: 7px;
+  padding: 9px 12px 8px; box-shadow: inset 0 0 0 2px var(--c), inset 0 0 0 3.5px var(--edge); cursor: pointer; white-space: nowrap;
+  transition: transform .12s ease; }
+.sign:hover { transform: translateY(-1px); }
+.sign:focus-visible, .sit:focus-visible, .copy:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+.sign.on { outline: 3px solid var(--yellow); outline-offset: 3px; }
+.b { --c: var(--blue); } .o { --c: var(--orange); } .n { --c: var(--brown); } .p { --c: var(--purple); }
+.w { --c: var(--surface); color: var(--fg); --edge: var(--fg); }
+.signs { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.arrow { color: var(--muted); font-weight: 800; }
+
+/* Situation picker */
+.picker { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; margin-bottom: 28px; }
+.groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.group h3 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; font-weight: 800; }
+.group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sit { width: 100%; text-align: left; font: 400 14px/1.35 var(--display); color: var(--fg); background: transparent; border: 1px solid transparent;
+  border-radius: 7px; padding: 6px 9px; cursor: pointer; }
+.sit:hover { border-color: var(--rule); }
+.sit.on { background: var(--yellow); color: var(--on-yellow); font-weight: 600; }
+
+/* Grid */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; align-items: start; }
+aside { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } aside { position: static; order: -1; } }
+
+/* Next exit panel */
+.exit { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 18px; display: grid; gap: 14px; }
+.situation { font-size: 13px; color: var(--muted); }
+.situation b { color: var(--fg); font-weight: 600; }
+.tabwrap { display: grid; justify-items: start; }
+.tab { font: 800 11px/1 var(--display); letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--c);
+  padding: 6px 10px 5px; border-radius: 6px 6px 0 0; margin-left: 14px; box-shadow: inset 0 0 0 1.5px var(--edge); }
+.big { --c: var(--green); display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%;
+  background: var(--c); color: #fff; border-radius: 10px; padding: 16px 16px 14px; box-shadow: inset 0 0 0 3px var(--c), inset 0 0 0 5px var(--edge); }
+.big.w { color: var(--fg); }
+.big span { font: 800 clamp(20px, 2.4vw, 26px)/1.05 var(--display); overflow-wrap: anywhere; }
+.copy { flex: none; font: 600 12px/1 var(--display); color: inherit; background: transparent; border: 1.5px solid currentColor;
+  border-radius: 6px; padding: 7px 9px 5px; cursor: pointer; opacity: .9; }
+.exit h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.note { border-left: 4px solid var(--yellow); padding-left: 10px; font-size: 14px; }
+.inv { font-size: 13px; color: var(--muted); }
+.inv code, code { font: 500 .92em var(--mono); }
+
+/* Main line */
+section { margin-bottom: 36px; }
+.road { position: relative; padding-left: 46px; display: grid; gap: 22px; }
+.road::before { content: ""; position: absolute; left: 15px; top: 10px; bottom: 10px; width: 8px; border-radius: 4px; background: var(--green); }
+.stop { position: relative; display: grid; gap: 8px; min-width: 0; }
+.stop::before { content: ""; position: absolute; left: -39px; top: 6px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface); border: 5px solid var(--green); }
+.stop p { color: var(--muted); max-width: 64ch; }
+.q { position: relative; font-weight: 600; font-size: 14px; color: var(--fg); display: flex; gap: 10px; align-items: center; }
+.q::before { content: ""; position: absolute; left: -36px; width: 16px; height: 16px; transform: rotate(45deg);
+  background: var(--yellow); box-shadow: 0 0 0 2px var(--bg); }
+.detour { border: 2px dashed var(--orange); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+.detour small, .branch small { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 800; color: var(--muted); }
+.fork { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.branch { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.branch p { font-size: 14px; }
+.under { font-size: 14px; color: var(--muted); }
+
+/* Ramps and index */
+.ramps { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.ramp { background: var(--surface); border: 1px solid var(--rule); border-top: 6px solid var(--blue); border-radius: 10px; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.ramp p { font-size: 14px; color: var(--muted); }
+.merge { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.index { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 14px; align-items: center; }
+.row .sign { justify-self: start; }
+.row p { font-size: 14px; color: var(--muted); }
+@media (max-width: 560px) { .row { grid-template-columns: minmax(0, 1fr); gap: 6px; } }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 28px; }
+
+/* Phase tree */
+.tree { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: q; }
+.tree li { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: start; }
+.dia { width: 28px; height: 28px; margin: 4px 6px; transform: rotate(45deg); background: var(--yellow); border-radius: 4px;
+  display: grid; place-items: center; box-shadow: inset 0 0 0 2px var(--on-yellow); }
+.dia b { transform: rotate(-45deg); color: var(--on-yellow); font-weight: 800; font-size: 14px; }
+.tree h3 { font-size: 15px; font-weight: 800; }
+.tree p { font-size: 14px; color: var(--muted); max-width: 66ch; }
+.tree .ans { color: var(--fg); font-weight: 600; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+@media (prefers-reduced-motion: reduce) { .sign { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Skill Interchange</h1>
+      <p class="lede">Pick where you are and the sign on the right names the next skill. Click any sign on the map to read what it does and where it leads.</p>
+    </div>
+    <div class="legend" aria-label="Sign colours">
+      <span><i style="--c:var(--green)"></i>Main flow</span>
+      <span><i style="--c:var(--blue)"></i>On-ramp</span>
+      <span><i style="--c:var(--orange)"></i>Upkeep and detours</span>
+      <span><i style="--c:var(--brown)"></i>Standalone</span>
+      <span><i style="--c:var(--surface);--edge:var(--fg)"></i>Vocabulary and setup</span>
+      <span><i style="--c:var(--purple)"></i>Platform and tooling</span>
+      <span><i style="--c:var(--yellow)"></i>Decision point</span>
+    </div>
+  </header>
+
+  <div class="picker">
+    <h2>Where are you?</h2>
+    <div class="groups" id="groups"></div>
+  </div>
+
+  <div class="grid">
+    <main>
+      <section aria-labelledby="h-main">
+        <h2 id="h-main">Main flow: idea to ship</h2>
+        <div class="road">
+          <div class="stop">
+            <div class="signs"><button class="sign" data-s="grill-with-docs">/grill-with-docs</button><span class="under">or <button class="sign n" data-s="grill-me">/grill-me</button> with no repo</span></div>
+            <p>Sharpen the idea by interview. Leaves <code>GLOSSARY.md</code> and ADRs behind.</p>
+          </div>
+
+          <div class="q">Can every question be settled in conversation?</div>
+          <div class="stop">
+            <div class="detour">
+              <small>No: detour for a runnable answer</small>
+              <div class="signs">
+                <button class="sign o" data-s="handoff">/handoff</button><span class="arrow">→</span>
+                <button class="sign o" data-s="prototype">/prototype</button><span class="arrow">→</span>
+                <button class="sign o" data-s="handoff">/handoff</button><span class="under">back to the idea thread</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="q">Is this a multi-session build?</div>
+          <div class="stop">
+            <div class="fork">
+              <div class="branch">
+                <small>Yes</small>
+                <div class="signs"><button class="sign" data-s="to-spec">/to-spec</button><span class="arrow">→</span><button class="sign" data-s="to-tickets">/to-tickets</button></div>
+                <p>Then work the tickets one of two ways:</p>
+                <div class="signs"><button class="sign" data-s="implement">/implement</button><span class="under">per ticket, <code>/clear</code> between</span></div>
+                <div class="signs"><button class="sign" data-s="implement-spec">/implement-spec</button><span class="under">whole spec, parallel</span></div>
+              </div>
+              <div class="branch">
+                <small>No</small>
+                <div class="signs"><button class="sign" data-s="implement">/implement</button></div>
+                <p>Right here, in the same context window.</p>
+              </div>
+            </div>
+            <p class="under">Either way the code is built with <button class="sign" data-s="tdd">/tdd</button> and checked with <button class="sign" data-s="code-review">/code-review</button>. A pull request gets <button class="sign" data-s="pr">/pr</button>.</p>
+          </div>
+
+          <div class="stop">
+            <div class="signs"><button class="sign" data-s="retro">/retro</button></div>
+            <p>Close the loop: turn what went wrong into checks, standards and steering files, so the next build starts from a better place.</p>
+          </div>
+        </div>
+        <p class="under" style="margin-top:16px">Keep grilling, spec and tickets in one unbroken context. Don't compact or clear until after <code>/to-tickets</code> unless you near ~150k tokens.</p>
+      </section>
+
+      <section aria-labelledby="h-ramps">
+        <h2 id="h-ramps">On-ramps</h2>
+        <div class="ramps">
+          <div class="ramp">
+            <p>Bugs and requests piling up that you didn't write</p>
+            <div class="signs"><button class="sign b" data-s="triage">/triage</button></div>
+            <div class="merge">Merges at <button class="sign" data-s="implement">/implement</button></div>
+          </div>
+          <div class="ramp">
+            <p>Something's broken and resists a first glance</p>
+            <div class="signs"><button class="sign b" data-s="diagnosing-bugs">/diagnosing-bugs</button></div>
+            <div class="merge">Then <button class="sign" data-s="retro">/retro</button></div>
+          </div>
+          <div class="ramp">
+            <p>A huge, foggy effort too big for one session</p>
+            <div class="signs"><button class="sign b" data-s="wayfinder">/wayfinder</button></div>
+            <div class="merge">Merges at <button class="sign" data-s="to-spec">/to-spec</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-phase" id="phase">
+        <h2 id="h-phase">At a phase boundary: what to do with context</h2>
+        <ol class="tree">
+          <li><span class="dia"><b>1</b></span><div><h3>Can you continue?</h3><p>The next phase needs this one verbatim, or there's room left in the ~150k smart zone. <span class="ans">Continue.</span></p></div></li>
+          <li><span class="dia"><b>2</b></span><div><h3>Is this context irrelevant to what's next?</h3><p>Everything here is disposable. <span class="ans"><code>/clear</code>.</span> Clearing relevant context loses the why for good.</p></div></li>
+          <li><span class="dia"><b>3</b></span><div><h3>Is something travelling?</h3><p>New harness, new directory, a colleague, or a side task forked mid-phase. <span class="ans"><code>/handoff</code>.</span></p></div></li>
+          <li><span class="dia"><b>4</b></span><div><h3>Can it run AFK?</h3><p>Tightly scoped, no steering needed, like an automated review. <span class="ans">Send it to a subagent.</span></p></div></li>
+          <li><span class="dia"><b>5</b></span><div><h3>Otherwise</h3><p>Relevant context, same place, you stay in the loop. <span class="ans"><code>/compact</code></span> with an instruction for what to keep.</p></div></li>
+        </ol>
+        <p class="under" style="margin-top:12px">First yes wins. Decide only at a boundary; mid-phase, continue or split the rest into subagents.</p>
+      </section>
+
+      <div class="cols">
+        <section aria-labelledby="h-up">
+          <h2 id="h-up">Upkeep and vocabulary</h2>
+          <div class="index">
+            <div class="row"><button class="sign o" data-s="improve-codebase-architecture">/improve-codebase-architecture</button><p>Find refactor candidates in a spare moment.</p></div>
+            <div class="row"><button class="sign w" data-s="domain-modeling">/domain-modeling</button><p>When the words are the problem.</p></div>
+            <div class="row"><button class="sign w" data-s="codebase-design">/codebase-design</button><p>When a module's shape is the problem.</p></div>
+            <div class="row"><button class="sign w" data-s="setup-matt-pocock-skills">/setup-matt-pocock-skills</button><p>Once per repo, first.</p></div>
+          </div>
+        </section>
+        <section aria-labelledby="h-solo">
+          <h2 id="h-solo">Standalone</h2>
+          <div class="index">
+            <div class="row"><button class="sign n" data-s="research">/research</button><p>Facts from primary sources, in the background.</p></div>
+            <div class="row"><button class="sign n" data-s="to-questionnaire">/to-questionnaire</button><p>The answer is in someone else's head.</p></div>
+            <div class="row"><button class="sign n" data-s="wizard">/wizard</button><p>A step only a human can do.</p></div>
+            <div class="row"><button class="sign n" data-s="wait-what">/wait-what</button><p>That last message didn't land.</p></div>
+            <div class="row"><button class="sign n" data-s="grilling">/grilling</button><p>The bare interview, no wrapper.</p></div>
+            <div class="row"><button class="sign n" data-s="teach">/teach</button><p>Learn a concept over sessions.</p></div>
+            <div class="row"><button class="sign n" data-s="writing-for-agents">/writing-for-agents</button><p>Writing skills and AGENTS.md.</p></div>
+          </div>
+        </section>
+      </div>
+
+      <section aria-labelledby="h-yours">
+        <h2 id="h-yours">Your other skills</h2>
+        <div class="cols">
+          <div class="index">
+            <div class="row"><button class="sign n" data-s="writing-fragments">/writing-fragments</button><p>Explore: collect raw fragments.</p></div>
+            <div class="row"><button class="sign n" data-s="writing-beats">/writing-beats</button><p>Exploit: pick the article's path beat by beat.</p></div>
+            <div class="row"><button class="sign n" data-s="writing-shape">/writing-shape</button><p>Exploit: shape it paragraph by paragraph.</p></div>
+          </div>
+          <div class="index">
+            <div class="row"><button class="sign n" data-s="chief-of-staff">/chief-of-staff</button><p>One long session pursuing a goal via subagents.</p></div>
+            <div class="row"><button class="sign n" data-s="loop-me">/loop-me</button><p>Spec a recurring loop worth delegating.</p></div>
+            <div class="row"><button class="sign w" data-s="setup-ts-deep-modules">/setup-ts-deep-modules</button><p>Enforce deep modules in a TS repo.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-plat">
+        <h2 id="h-plat">Platform and tooling</h2>
+        <p class="under" style="margin-bottom:14px">Reference skills for a specific platform or tool. They sit beside the flow rather than on it: the agent pulls them in when the work touches their subject.</p>
+        <div class="cols">
+          <div class="index">
+            <div class="row"><button class="sign p" data-s="cloudflare">/cloudflare</button><p>Any Cloudflare task; start here.</p></div>
+            <div class="row"><button class="sign p" data-s="wrangler">/wrangler</button><p>Before running wrangler commands.</p></div>
+            <div class="row"><button class="sign p" data-s="workers-best-practices">/workers-best-practices</button><p>Writing or reviewing a Worker.</p></div>
+            <div class="row"><button class="sign p" data-s="durable-objects">/durable-objects</button><p>Stateful coordination in a Durable Object.</p></div>
+            <div class="row"><button class="sign p" data-s="agents-sdk">/agents-sdk</button><p>Agents on Workers: state, workflows, chat, MCP.</p></div>
+            <div class="row"><button class="sign p" data-s="sandbox-sdk">/sandbox-sdk</button><p>Running untrusted code in a sandbox.</p></div>
+          </div>
+          <div class="index">
+            <div class="row"><button class="sign p" data-s="cloudflare-email-service">/cloudflare-email-service</button><p>Sending or routing email.</p></div>
+            <div class="row"><button class="sign p" data-s="turnstile-spin">/turnstile-spin</button><p>Protecting a form from bots.</p></div>
+            <div class="row"><button class="sign p" data-s="cloudflare-one">/cloudflare-one</button><p>Zero Trust: Access, Gateway, WARP, Tunnel.</p></div>
+            <div class="row"><button class="sign p" data-s="cloudflare-one-migrations">/cloudflare-one-migrations</button><p>Moving from Zscaler, VPN or another SASE.</p></div>
+            <div class="row"><button class="sign p" data-s="web-perf">/web-perf</button><p>Auditing page speed and Core Web Vitals.</p></div>
+            <div class="row"><button class="sign p" data-s="setup-pre-commit">/setup-pre-commit</button><p>Husky hooks: format, typecheck, test.</p></div>
+            <div class="row"><button class="sign p" data-s="ask-matt">/ask-matt</button><p>Your situation isn't on this page.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <footer>Built from the <code>ask-matt</code> map and each skill's SKILL.md in <code>~/.claude/skills</code>, October 2026. Run <code>/ask-matt</code> when a situation isn't listed here.</footer>
+    </main>
+
+    <aside>
+      <div class="exit" id="exit" aria-live="polite"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const CAT = {
+  main: ["Main flow", ""], ramp: ["On-ramp", "b"], up: ["Upkeep and detours", "o"],
+  solo: ["Standalone", "n"], vocab: ["Vocabulary and setup", "w"], plat: ["Platform and tooling", "p"]
+};
+const TAB = { "": "--green", b: "--blue", o: "--orange", n: "--brown", p: "--purple" };
+const SK = {
+  "grill-with-docs": { cat: "main", does: "Interviews you relentlessly to sharpen an idea, recording terms in GLOSSARY.md and decisions as ADRs as it goes.", when: "You have an idea and you're working in a repo.", next: ["to-spec", "implement", "handoff"], note: "If a question needs a runnable answer, detour through /prototype first." },
+  "grill-me": { cat: "solo", does: "The same interview as /grill-with-docs, but it saves nothing.", when: "There's no repo under you: a plan, a design, a piece of writing.", next: [] },
+  "handoff": { cat: "up", does: "Compacts the conversation into a portable markdown file another session can pick up.", when: "Moving to a new directory, harness or colleague, or forking a side task mid-phase. The prototype detour uses it in both directions.", next: ["prototype", "grill-with-docs"] },
+  "prototype": { cat: "up", does: "Builds throwaway code that answers one design question: a state model, or what a UI should look like. Kept on a prototype/<name> branch as a primary source.", when: "A question is hard to settle on paper.", next: ["handoff"], auto: true },
+  "to-spec": { cat: "main", does: "Turns the conversation into a spec on the issue tracker. No new interview, just synthesis.", when: "Grilling is done and the build spans more than one session.", next: ["to-tickets"], note: "Don't clear or compact between grilling and /to-tickets." },
+  "to-tickets": { cat: "main", does: "Splits the spec into tracer-bullet tickets, each declaring what blocks it.", when: "Straight after /to-spec, in the same context.", next: ["implement", "implement-spec"], note: "These tickets are already agent-ready. Don't triage them." },
+  "implement": { cat: "main", does: "Builds one piece of work from a spec or ticket, driving /tdd and finishing with /code-review.", when: "Per ticket with /clear between each, or right after grilling when the work fits one session.", next: ["pr", "retro"] },
+  "implement-spec": { cat: "main", does: "Builds a whole spec: implementer subagents work the ready tickets in parallel onto one integration branch, then one /code-review runs over it.", when: "You'd rather orchestrate the build than drive each ticket yourself.", next: ["pr", "retro"] },
+  "tdd": { cat: "main", does: "Red-green-refactor, one vertical slice at a time.", when: "Inside /implement, or on its own to build one concrete behaviour test-first without a spec.", next: ["code-review"], auto: true },
+  "code-review": { cat: "main", does: "Reviews a diff since a fixed point on two axes, Standards and Spec, in parallel subagents.", when: "Inside /implement, or on its own for any branch or PR.", next: ["pr"], auto: true },
+  "pr": { cat: "main", does: "Shapes a PR body: the smallest visual of the change, before/after evidence, and a one-way or two-way door call.", when: "Whenever a pull request gets written.", next: ["retro"], auto: true },
+  "retro": { cat: "main", does: "Looks back over the session and proposes changes to the environment: automated checks, coding standards, steering files, tooling.", when: "After a build, especially one that went sideways, or after a bug fix.", next: [], note: "Run it in the session it's looking back on, before you clear." },
+  "triage": { cat: "ramp", does: "Moves incoming issues through triage roles, verifies them, grills if needed, and writes agent-ready briefs.", when: "Raw bug reports and feature requests you didn't create.", next: ["implement"] },
+  "diagnosing-bugs": { cat: "ramp", does: "Gets one command that goes red on this bug before forming any theory, then fixes it with a regression test.", when: "The bug resists a first glance, flakes, or crept in between two good states.", next: ["retro", "improve-codebase-architecture"], auto: true, note: "If there's no good seam to lock the bug down, that's a job for /improve-codebase-architecture." },
+  "wayfinder": { cat: "ramp", does: "Charts a shared map of decision tickets on the tracker and resolves them one at a time. Produces decisions, not code.", when: "A greenfield project or huge feature, too big for one session, with the route still unclear.", next: ["to-spec"], note: "Never for a well-scoped feature. When the map clears, merge at /to-spec, not /implement." },
+  "improve-codebase-architecture": { cat: "up", does: "Scans for deepening opportunities, shows them as an HTML report, then grills the one you pick.", when: "You have a spare moment for upkeep.", next: ["grill-with-docs", "codebase-design"] },
+  "domain-modeling": { cat: "vocab", does: "Sharpens the project's domain language: challenges fuzzy terms, splits overloaded words, records hard-to-reverse decisions as ADRs.", when: "The words are the problem, not the process.", next: [], auto: true },
+  "codebase-design": { cat: "vocab", does: "The deep-module vocabulary: module, interface, depth, seam, adapter, leverage, locality.", when: "Designing a module's shape or deciding where a seam goes.", next: [], auto: true },
+  "setup-matt-pocock-skills": { cat: "vocab", does: "Configures the issue tracker, triage labels and doc layout the engineering skills assume.", when: "Once per repo, before your first engineering flow.", next: ["grill-with-docs"] },
+  "grilling": { cat: "solo", does: "The interview primitive under both grill skills, /triage, /wayfinder and /improve-codebase-architecture.", when: "You want the bare interview with no wrapper.", next: [], auto: true },
+  "research": { cat: "solo", does: "A background agent reads primary sources and leaves a cited Markdown file in the repo.", when: "You need facts gathered while you keep working.", next: ["grill-with-docs"], auto: true },
+  "to-questionnaire": { cat: "solo", does: "Interviews you about who you're asking and what you need back, then writes them a questionnaire aimed at the gap.", when: "The blocker is in someone else's head.", next: ["grill-with-docs", "to-spec"] },
+  "wizard": { cat: "solo", does: "Generates an interactive bash script that opens each URL, captures each value and writes it into .env and GitHub secrets.", when: "Provisioning, credentials, an unfamiliar dashboard, a one-off cutover: steps only a human can do.", next: [], auto: true },
+  "wait-what": { cat: "solo", does: "Re-pitches the last message in plain English, with the context you were missing.", when: "Something the agent just said didn't land.", next: [] },
+  "teach": { cat: "solo", does: "Teaches a concept over several sessions, using the directory as a stateful workspace.", when: "You want to learn something properly, not just get an answer.", next: [] },
+  "writing-for-agents": { cat: "solo", does: "Reference for writing documents agents consume: skills, AGENTS.md, pointed-at docs.", when: "Creating or editing a skill or steering file.", next: [], auto: true },
+  "writing-fragments": { cat: "solo", does: "Explore: grills you about what you want to write and appends raw fragments to one file. No structure yet.", when: "Starting a piece of writing.", next: ["writing-beats", "writing-shape"] },
+  "writing-beats": { cat: "solo", does: "Exploit: builds the article as a journey of beats, offering 2 or 3 next beats each time and grounding every concept before it's used.", when: "You have a pile of fragments and want to choose the path step by step.", next: [] },
+  "writing-shape": { cat: "solo", does: "Exploit: picks an opening from 2 or 3 candidates, then grows the article paragraph by paragraph, arguing each block's form.", when: "You have a pile of fragments and want to shape it into an article.", next: [] },
+  "chief-of-staff": { cat: "solo", does: "Runs one long session that pursues a goal through background subagents, improving the agents' environment as it goes.", when: "A long-running goal you want co-ordinated from a single session.", next: [] },
+  "loop-me": { cat: "solo", does: "Grills you into workflow specs in workflows/*.md for recurring loops in your life worth delegating.", when: "You want to automate something you do repeatedly.", next: [] },
+  "setup-ts-deep-modules": { cat: "vocab", does: "Installs dependency-cruiser rules so each TypeScript package is reachable only through its entry-point files.", when: "Enforcing deep-module boundaries in a TS repo.", next: ["codebase-design"] },
+  "cloudflare": { cat: "plat", does: "The umbrella reference for the Cloudflare platform: Workers, Pages, KV, D1, R2, Workers AI, networking, security and infrastructure-as-code. Pulls from current Cloudflare docs.", when: "Any Cloudflare development task, when you're not sure which narrower skill fits.", next: ["wrangler", "workers-best-practices"], auto: true },
+  "wrangler": { cat: "plat", does: "Correct syntax and practice for the Wrangler CLI: deploying and developing Workers, and managing KV, R2, D1, Queues, Workflows and secrets.", when: "Before running any wrangler command.", next: [], auto: true },
+  "workers-best-practices": { cat: "plat", does: "Reviews and writes Workers code against production practice: streaming, floating promises, global state, secrets, bindings, observability.", when: "Writing a new Worker, reviewing one, or editing wrangler.jsonc.", next: [], auto: true },
+  "durable-objects": { cat: "plat", does: "Builds and reviews Durable Objects: RPC methods, SQLite storage, alarms, WebSockets, and testing with Vitest.", when: "Stateful coordination such as chat rooms, multiplayer games or booking systems.", next: [], auto: true },
+  "agents-sdk": { cat: "plat", does: "Builds AI agents on Workers with the Agents SDK: state, callable RPC, durable workflows, scheduling, chat, voice and MCP servers.", when: "A stateful agent, chat app or MCP server on Cloudflare.", next: ["durable-objects"], auto: true },
+  "sandbox-sdk": { cat: "plat", does: "Builds sandboxed code execution with the Sandbox SDK: lifecycle, commands, files, code interpreter and preview URLs.", when: "Running AI-generated or untrusted code, or building a code interpreter.", next: [], auto: true },
+  "cloudflare-email-service": { cat: "plat", does: "Sends and receives transactional email with Cloudflare Email Sending and Email Routing, including SPF, DKIM and DMARC setup.", when: "Adding email to a Worker or any app.", next: [], auto: true },
+  "turnstile-spin": { cat: "plat", does: "Sets up Turnstile end to end: creates the widget, deploys the siteverify Worker, writes the frontend snippets and validates.", when: "Adding a CAPTCHA, protecting a form from bots, or fixing a Turnstile integration.", next: [], auto: true },
+  "cloudflare-one": { cat: "plat", does: "Designs, configures and troubleshoots Cloudflare One Zero Trust: Access, Gateway, WARP, Tunnel, DLP, CASB and device posture.", when: "Working on a Zero Trust or SASE deployment.", next: ["cloudflare-one-migrations"], auto: true },
+  "cloudflare-one-migrations": { cat: "plat", does: "Plans a move to Cloudflare One from Zscaler, Palo Alto, a legacy VPN or another SASE stack: assessment, policy mapping, rollout and gap analysis.", when: "Migrating an existing security stack onto Cloudflare One.", next: [], auto: true },
+  "web-perf": { cat: "plat", does: "Audits page performance with Chrome DevTools: Core Web Vitals, render-blocking resources, request chains, layout shifts, caching and accessibility gaps.", when: "A page loads slowly or you want a Lighthouse-style audit.", next: [], auto: true },
+  "setup-pre-commit": { cat: "plat", does: "Adds Husky pre-commit hooks with lint-staged formatting, type checking and tests.", when: "A repo has no commit-time checks yet.", next: ["retro"], auto: true },
+  "ask-matt": { cat: "plat", does: "Reads your skills and maps your situation onto the flow: which skill comes next, and what to do with context at a phase boundary.", when: "Your situation isn't listed on this page.", next: [] }
+};
+const GROUPS = [
+  ["Starting out", [
+    ["I have an idea and I'm in a repo", "grill-with-docs"],
+    ["I have an idea but no repo", "grill-me"],
+    ["First time using these skills in this repo", "setup-matt-pocock-skills"],
+    ["A huge, foggy effort beyond one session", "wayfinder"],
+    ["Bug reports and requests are piling up", "triage"],
+    ["Something's broken and I can't see why", "diagnosing-bugs"],
+    ["I have a spare moment for upkeep", "improve-codebase-architecture"]
+  ]],
+  ["Mid-build", [
+    ["A question needs running code to answer", "handoff", "Hand off, then run /prototype in a fresh session against that file. Hand the answer back."],
+    ["Grilling's done and it's a multi-session build", "to-spec"],
+    ["Grilling's done and it fits this session", "implement"],
+    ["Tickets are ready and I'll drive each one", "implement", "One ticket per session, blockers first, /clear between each."],
+    ["Tickets are ready and I want them built in parallel", "implement-spec"],
+    ["I want one behaviour built test-first", "tdd"],
+    ["I want a branch or PR reviewed", "code-review"],
+    ["The build's finished, or went sideways", "retro"],
+    ["I've finished a phase. Keep this context?", "#phase"]
+  ]],
+  ["Stuck on something", [
+    ["I need facts from docs or primary sources", "research"],
+    ["The answer is in someone else's head", "to-questionnaire"],
+    ["There's a step only I can do", "wizard"],
+    ["That last message didn't land", "wait-what"],
+    ["A term is fuzzy or doing three jobs", "domain-modeling"],
+    ["I'm designing a module's shape", "codebase-design"]
+  ]],
+  ["Something else", [
+    ["I'm starting a piece of writing", "writing-fragments"],
+    ["I have fragments and want an article", "writing-shape", "Prefer picking the path beat by beat? Use /writing-beats instead."],
+    ["A recurring task I want to delegate", "loop-me"],
+    ["A long-running goal for one session", "chief-of-staff"],
+    ["I want to learn a concept", "teach"],
+    ["I'm writing a skill or AGENTS.md", "writing-for-agents"],
+    ["I'm building on Cloudflare", "cloudflare"],
+    ["A page loads slowly", "web-perf"],
+    ["I want checks to run before each commit", "setup-pre-commit"],
+    ["None of these fit", "ask-matt"]
+  ]]
+];
+
+const exitEl = document.getElementById("exit");
+const groupsEl = document.getElementById("groups");
+let current = { sit: null, skill: null };
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function signHTML(id) { const k = CAT[SK[id].cat][1]; return `<button class="sign ${k}" data-s="${id}">/${id}</button>`; }
+
+function show(id, sitText, sitNote) {
+  const s = SK[id]; if (!s) return;
+  const [catName, k] = CAT[s.cat];
+  current.skill = id;
+  const note = sitNote || s.note;
+  exitEl.innerHTML = `
+    ${sitText ? `<p class="situation">You said: <b>${esc(sitText)}</b></p>` : ""}
+    <div class="tabwrap">
+      <div class="tab" style="${k === "w" ? "--c:var(--fg);color:var(--bg)" : `--c:var(${TAB[k]})`}">Next exit · ${catName}</div>
+      <div class="big ${k}"><span>/${id}</span><button class="copy" id="copy" type="button">Copy</button></div>
+    </div>
+    <p>${esc(s.does)}</p>
+    <div><h4>Reach for it when</h4><p>${esc(s.when)}</p></div>
+    ${note ? `<p class="note">${esc(note)}</p>` : ""}
+    ${s.next.length ? `<div><h4>Leads to</h4><div class="signs">${s.next.map(signHTML).join("")}</div></div>` : ""}
+    <p class="inv">${s.auto ? "You can type it, and the agent may also reach for it on its own." : "You type it. The agent won't start it on its own."}</p>`;
+  document.querySelectorAll(".sign[data-s]").forEach(b => b.classList.toggle("on", b.dataset.s === id && !exitEl.contains(b)));
+  document.getElementById("copy").addEventListener("click", e => {
+    const btn = e.currentTarget, text = "/" + id;
+    const done = () => { btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy", 1400); };
+    try { navigator.clipboard.writeText(text).then(done, () => selectFallback(btn)); } catch (_) { selectFallback(btn); }
+  });
+}
+function selectFallback(btn) {
+  const span = btn.previousElementSibling, r = document.createRange();
+  r.selectNodeContents(span); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  btn.textContent = "Selected";
+}
+
+GROUPS.forEach(([name, items]) => {
+  const g = document.createElement("div"); g.className = "group";
+  g.innerHTML = `<h3>${name}</h3><ul>${items.map((it, i) => `<li><button class="sit" type="button" data-g="${name}" data-i="${i}">${esc(it[0])}</button></li>`).join("")}</ul>`;
+  groupsEl.appendChild(g);
+});
+
+function narrow() { return matchMedia("(max-width: 900px)").matches; }
+groupsEl.addEventListener("click", e => {
+  const b = e.target.closest(".sit"); if (!b) return;
+  const it = GROUPS.find(g => g[0] === b.dataset.g)[1][+b.dataset.i];
+  document.querySelectorAll(".sit").forEach(x => x.classList.toggle("on", x === b));
+  if (it[1] === "#phase") { document.getElementById("phase").scrollIntoView({ behavior: "smooth" }); return; }
+  show(it[1], it[0], it[2]);
+  if (narrow()) exitEl.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest(".sign[data-s]"); if (!b) return;
+  document.querySelectorAll(".sit").forEach(x => x.classList.remove("on"));
+  show(b.dataset.s);
+  if (narrow() && !exitEl.contains(b)) exitEl.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+const start = location.hash.slice(1);
+if (SK[start]) show(start);
+else { document.querySelector(".sit").classList.add("on"); show("grill-with-docs", GROUPS[0][1][0][0]); }
+</script>
+
+</body></html>
