@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Drain a repo's ready-for-agent queue: one fresh headless `/work-queue` run per issue.
+#
+#   agent-listener [--interval SECS] [--once] [--dry-run] [DIR]
+#
+# DIR defaults to the current directory and must be set up with /setup-matt-pocock-skills.
+# The tracker is read from docs/agents/issue-tracker.md. GitHub, GitLab and local-markdown
+# trackers are checked from bash before Claude starts; any other tracker (Linear, Jira, ...)
+# starts a run every interval and lets /work-queue check.
+set -euo pipefail
+
+interval=600
+once=false
+dry_run=false
+dir=.
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --interval) interval="$2"; shift 2 ;;
+    --once) once=true; shift ;;
+    --dry-run) dry_run=true; shift ;;
+    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) dir="$1"; shift ;;
+  esac
+done
+
+die() { echo "agent-listener: $*" >&2; exit 1; }
+
+root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || die "$dir is not inside a git repo"
+cd "$root"
+
+for f in docs/agents/issue-tracker.md docs/agents/triage-labels.md; do
+  [[ -f $f ]] || die "$root has no $f; run /setup-matt-pocock-skills there first"
+done
+[[ -e ~/.claude/skills/work-queue/SKILL.md ]] || die "work-queue skill isn't installed; run npm run sync:skills in skill-index"
+command -v claude >/dev/null || die "claude CLI not on PATH"
+
+# The label string mapped to the ready-for-agent role (second column of its table row).
+ready=$(awk -F'|' '$2 ~ /`ready-for-agent`/ { gsub(/[` ]/, "", $3); print $3; exit }' docs/agents/triage-labels.md)
+ready=${ready:-ready-for-agent}
+
+tracker=$(sed -n 's/^# Issue tracker: *//p' docs/agents/issue-tracker.md | head -1 | tr '[:upper:]' '[:lower:]')
+case "$tracker" in
+  github) command -v gh >/dev/null || die "tracker is GitHub but gh isn't installed" ;;
+  gitlab) command -v glab >/dev/null || die "tracker is GitLab but glab isn't installed" ;;
+esac
+
+# Exit 0 when the queue probably has an issue to pick. Blocked tickets still count;
+# /work-queue checks blockers and reports "queue empty", which sends us back to sleep.
+has_work() {
+  case "$tracker" in
+    github)
+      [[ $(gh issue list --state open --label "$ready" --json labels \
+        -q '[.[] | select(all(.labels[]; .name != "spec"))] | length') -gt 0 ]] ;;
+    gitlab)
+      [[ $(glab issue list --label "$ready" --not-label spec --output json | tr -d '[:space:]') != "[]" ]] ;;
+    "local markdown")
+      grep -Eqs "^\**Status:\**[[:space:]]*$ready" .scratch/*/issues/*.md ;;
+    *) return 0 ;;
+  esac
+}
+
+name=$(basename "$root")
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/agent-listener
+mkdir -p "$state_dir"
+log="$state_dir/$name.log"
+
+# One listener per repo.
+lock="$state_dir/$name.lock"
+mkdir "$lock" 2>/dev/null || die "already listening on $root (remove $lock if it's stale)"
+trap 'rmdir "$lock"' EXIT
+
+# Backstop for the power settings: no idle sleep while this runs.
+if command -v caffeinate >/dev/null; then caffeinate -i -w $$ & fi
+
+say() { echo "[$(date '+%F %T')] $*" | tee -a "$log"; }
+say "listening on $root (tracker: ${tracker:-unknown}, label: $ready, every ${interval}s); log: $log"
+
+while true; do
+  if has_work; then
+    if $dry_run; then
+      say "work found; would run /work-queue"
+    else
+      say "work found; running /work-queue"
+      if out=$(claude -p "/work-queue" --dangerously-skip-permissions 2>&1 | tee -a "$log"); then
+        # Drain straight on to the next issue unless the queue reported empty.
+        if ! $once && ! grep -qi "queue empty" <<<"$out"; then continue; fi
+      else
+        say "claude exited non-zero; backing off"
+      fi
+    fi
+  else
+    say "queue empty"
+  fi
+  $once && break
+  sleep "$interval"
+done

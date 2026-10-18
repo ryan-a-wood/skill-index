@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Work queue
 
-The consumer side of `/triage`. Each run handles **one** issue: claim it, build it, hand it back as a PR. Run it under `/loop` (`/loop 30m /work-queue`) so the queue drains without you.
+The consumer side of `/triage`. Each run handles **one** issue: claim it, build it, hand it back as a PR. To drain the queue without you, run `bin/agent-listener <repo>` from skill-index (a fresh headless session per issue), or `/loop 30m /work-queue` inside one session.
 
 Every comment posted to the issue tracker starts with:
 
@@ -18,21 +18,27 @@ Every comment posted to the issue tracker starts with:
 
 Read `docs/agents/issue-tracker.md` for tracker operations and `docs/agents/triage-labels.md` for label strings. If either is missing, stop and tell the user to run `/setup-matt-pocock-skills`.
 
-This skill owns one label beyond the triage five: `agent-in-progress`, meaning an agent has claimed the issue. If `triage-labels.md` lacks it, add this row and create the label in the tracker:
+This skill owns two labels beyond the triage five. If `triage-labels.md` lacks either, add its row and create the label in the tracker:
 
 ```
 | `agent-in-progress` | `agent-in-progress` | Claimed by /work-queue; triage leaves it alone |
+| `spec`              | `spec`              | Parent spec from /to-spec; /work-queue never picks it |
 ```
+
+- `agent-in-progress`: an agent has claimed the issue.
+- `spec`: the issue is a parent spec, not a ticket. `/to-spec` labels its spec `ready-for-agent` too, so without this the queue would try to build a whole spec as one ticket. Its tickets carry the work; the spec closes when they do.
 
 ## Steps
 
+0. **Mark specs.** For each open `ready-for-agent` issue without the `spec` label, add `spec` if it has sub-issues or its body follows the `/to-spec` template (`## Problem Statement` and `## User Stories` headings). On a local tracker, skip this step: specs live in `spec.md`, outside the `issues/` folders.
+
 1. **Release stale claims.** For each open `agent-in-progress` issue whose claim comment is more than 4 hours old and which has no linked open PR, swap the label back to `ready-for-agent` and comment that the claim lapsed. Done when every `agent-in-progress` issue either has an open PR or a claim under 4 hours old.
 
-2. **Pick.** Take the oldest open `ready-for-agent` issue with no assignee and no open blockers. If there is none, report "queue empty" and end this run.
+2. **Pick.** Take the oldest open `ready-for-agent` issue with no `spec` label, no assignee and no open blockers. If there is none, report "queue empty" and end this run.
 
 3. **Claim.** Swap `ready-for-agent` for `agent-in-progress`, assign yourself, and comment `Claimed by /work-queue at <ISO timestamp>`. Re-read the issue: if another assignee or claim comment landed first, release yours and go back to step 2. The claim is the run's first write.
 
-4. **Build.** Create a git worktree on a new branch `agent/<number>-<short-slug>` from the default branch, so the user's checkout is untouched. Inside it, call the Skill tool with "implement", passing the issue reference. The agent brief in the triage comment is the spec.
+4. **Build.** Create a git worktree on a new branch `agent/<number>-<short-slug>` from the default branch, so the user's checkout is untouched. Inside it, call the Skill tool with "implement", passing the issue reference. The spec is the agent brief in the triage comment, or for a `/to-tickets` ticket, the ticket body.
 
 5. **Hand back.**
    - **Success** (implement finished, tests and code review pass): push the branch, open a PR whose body starts with `Fixes #<number>` and summarises the brief's acceptance criteria against what changed, and label the PR `ready-for-human`. Leave the issue on `agent-in-progress`; the merge closes it.
