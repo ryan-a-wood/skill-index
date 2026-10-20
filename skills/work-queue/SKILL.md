@@ -44,6 +44,6 @@ This skill owns two labels beyond the triage five. If `triage-labels.md` lacks e
    - **Success** (implement finished, tests and code review pass): push the branch, open a PR whose body starts with `Fixes #<number>` and summarises the brief's acceptance criteria against what changed, and label the PR `ready-for-human`. Leave the issue on `agent-in-progress`; the merge closes it.
    - **Failure** (blocked, tests red, or the brief proved wrong): push any partial branch, swap `agent-in-progress` for `ready-for-human`, and comment what blocked you and where the partial work lives.
 
-6. **Clean up.** Remove the worktree. Report the issue number, the outcome, and the PR link.
+6. **Report.** Leave the worktree in place so the user can inspect it and push follow-up fixes. Report the issue number, the outcome, the PR link, and the worktree path.
 
-The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and no worktree remains.
+The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and its worktree is left in place.
