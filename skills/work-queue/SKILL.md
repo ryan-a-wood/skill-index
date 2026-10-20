@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Work queue
 
-The consumer side of `/triage`. Each run handles **one** issue: claim it, build it, hand it back as a PR. To drain the queue without you, run `bin/agent-listener <repo>` from skill-index (a fresh headless session per issue), or `/loop 30m /work-queue` inside one session.
+The consumer side of `/triage`. Each run handles **one** issue: claim it, build it, hand it back as a PR. To drain the queue without you, run `bin/agent-listener <repo>` from skill-index (a fresh session per issue; add `--watch` to follow each one in tmux or the Claude app), or `/loop 30m /work-queue` inside one session.
 
 Every comment posted to the issue tracker starts with:
 
@@ -33,7 +33,6 @@ This skill owns two labels beyond the triage five. If `triage-labels.md` lacks e
 0. **Mark specs.** For each open `ready-for-agent` issue without the `spec` label, add `spec` if it has sub-issues or its body follows the `/to-spec` template (`## Problem Statement` and `## User Stories` headings). On a local tracker, skip this step: specs live in `spec.md`, outside the `issues/` folders.
 
 1. **Release stale claims.** For each open `agent-in-progress` issue whose claim comment is more than 4 hours old and which has no linked open PR, swap the label back to `ready-for-agent` and comment that the claim lapsed. Done when every `agent-in-progress` issue either has an open PR or a claim under 4 hours old.
-
 2. **Pick.** Take the oldest open `ready-for-agent` issue with no `spec` label, no assignee and no open blockers. If there is none, report "queue empty" and end this run.
 
 3. **Claim.** Swap `ready-for-agent` for `agent-in-progress`, assign yourself, and comment `Claimed by /work-queue at <ISO timestamp>`. Re-read the issue: if another assignee or claim comment landed first, release yours and go back to step 2. The claim is the run's first write.
@@ -46,4 +45,11 @@ This skill owns two labels beyond the triage five. If `triage-labels.md` lacks e
 
 6. **Report.** Leave the worktree in place so the user can inspect it and push follow-up fixes. Report the issue number, the outcome, the PR link, and the worktree path.
 
-The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and its worktree is left in place.
+7. **Babysit the review.** Run this only when told to babysit a PR (`bin/agent-listener --babysit` resumes the session with that instruction once a run is over), and only if you can receive PR events (the `subscribe_pr_activity` tool). A normal run ends after step 6. Subscribe to the PR and handle Codex's review in rounds, working in the worktree:
+   - Act only on unresolved threads authored by `chatgpt-codex-connector`. Leave human comments for the human.
+   - For each one, fix it, run the project's checks, push, reply on the thread with the commit SHA, and resolve it. If the push fails over SSH, push over HTTPS with the `gh` credential helper.
+   - Codex reviews only when a PR opens, goes from draft to ready, or gets an `@codex review` comment, so after pushing fixes comment `@codex review` to get the next round.
+   - Stop when Codex reacts 👍 or leaves no unresolved threads, when the PR is merged or closed, after 3 rounds, or after 60 minutes with no Codex activity. On a cap, label the PR `ready-for-human` if it isn't already and comment what is still open.
+   - Unsubscribe when you stop, and report the rounds taken and anything left open.
+
+The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and its worktree is left in place. A babysit run is done once step 7's stop conditions are met.
