@@ -61,6 +61,8 @@ fi
 # The label string mapped to the ready-for-agent role (second column of its table row).
 ready=$(awk -F'|' '$2 ~ /`ready-for-agent`/ { gsub(/[` ]/, "", $3); print $3; exit }' docs/agents/triage-labels.md)
 ready=${ready:-ready-for-agent}
+human=$(awk -F'|' '$2 ~ /`ready-for-human`/ { gsub(/[` ]/, "", $3); print $3; exit }' docs/agents/triage-labels.md)
+human=${human:-ready-for-human}
 
 tracker=$(sed -n 's/^# Issue tracker: *//p' docs/agents/issue-tracker.md | head -1 | tr '[:upper:]' '[:lower:]')
 case "$tracker" in
@@ -190,9 +192,13 @@ while true; do
       say "work found; would run /work-queue"
     else
       say "work found; running $prompt"
+      started_at=$(date -u +%FT%TZ)
       if out=$($run | tee -a "$log"); then
         if $babysit; then
-          pr=$(grep -oE 'https://[^ )>]+/pull/[0-9]+' <<<"$out" | tail -1 || true)
+          # The reply may say "PR #58" without a URL, so ask GitHub for the PR this run opened.
+          pr=$(gh pr list --state open --label "$human" --json number,createdAt \
+            -q "[.[] | select(.createdAt >= \"$started_at\")] | sort_by(.createdAt) | last | .number // empty" 2>/dev/null || true)
+          [[ -n $pr ]] || pr=$(grep -oE 'https://[^ )>]+/pull/[0-9]+' <<<"$out" | tail -1 || true)
           sid=$(cat "$last_session")
           if [[ -n $pr ]]; then babysit_pr "$sid" "$pr" & fi
         fi
