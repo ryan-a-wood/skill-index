@@ -49,7 +49,8 @@ This skill owns two labels beyond the triage five. If `triage-labels.md` lacks e
    - Act only on unresolved threads authored by `chatgpt-codex-connector`. Leave human comments for the human.
    - For each one, fix it, run the project's checks, push, reply on the thread with the commit SHA, and resolve it. If the push fails over SSH, push over HTTPS with the `gh` credential helper.
    - Codex reviews only when a PR opens, goes from draft to ready, or gets an `@codex review` comment, so after pushing fixes comment `@codex review` to get the next round.
-   - Stop polling when Codex reacts 👍 or leaves no unresolved threads, when the PR is merged or closed, after 3 rounds, or after 60 minutes with no Codex activity. On a cap, label the PR `ready-for-human` if it isn't already and comment what is still open.
+   - Never treat "no unresolved threads" as done by itself: you resolve threads yourself, and none exist before Codex's first review. Codex has finished a round only when it reacts 👍 on the PR (the reaction user is `chatgpt-codex-connector[bot]`), or when a Codex review or receipt comment names the current head SHA and leaves no unresolved threads. After pushing, wait for a new receipt for the new SHA.
+   - Stop polling when Codex has finished a round with nothing left to fix (above), when the PR is merged or closed, after 3 rounds, or after 60 minutes with no Codex activity. On a cap, label the PR `ready-for-human` if it isn't already and comment what is still open.
    - Report the rounds taken and anything left open, then stop and go idle; the listener closes the window after 5 idle minutes.
 
 The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and its worktree is left in place. A babysit run is done once step 7's stop conditions are met.
