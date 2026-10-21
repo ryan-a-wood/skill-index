@@ -74,12 +74,16 @@ esac
 # open blockers. On GitHub that is checked here, so a queue of blocked tickets never starts
 # a session. Other trackers can't check blockers from bash; /work-queue does and reports
 # "queue empty", which sends us back to sleep.
+# On GitHub it also sets next_issue to the issue /work-queue should pick (the oldest), which
+# names the tmux window.
+next_issue=""
 has_work() {
+  next_issue=""
   case "$tracker" in
     github)
       local candidates open
       # Native dependencies (blocked_by counts open blockers only) plus the body-line fallback.
-      candidates=$(gh api --paginate "repos/{owner}/{repo}/issues?state=open&labels=$ready&per_page=100" \
+      candidates=$(gh api --paginate "repos/{owner}/{repo}/issues?state=open&labels=$ready&sort=created&direction=asc&per_page=100" \
         --jq '.[] | select(.pull_request == null and .assignee == null
             and all(.labels[]; .name != "spec")
             and ((.issue_dependencies_summary.blocked_by // 0) == 0))
@@ -92,6 +96,7 @@ has_work() {
         for ref in $(grep -oE '#[0-9]+' <<<"$line" || true); do
           grep -qx "${ref#\#}" <<<"$open" && continue 2
         done
+        next_issue=$num
         return 0
       done <<<"$candidates"
       return 1 ;;
@@ -125,12 +130,13 @@ run_headless() { claude -p "$prompt" --dangerously-skip-permissions 2>&1; }
 
 # Run one interactive session in a tmux window and print its last reply once it goes idle.
 run_watched() {
-  local id window status transcript="" started=false idle_polls=0 polls=0
+  local id window status transcript="" started=false idle_polls=0 polls=0 title=${next_issue:+#$next_issue}
+  title=${title:-$name}
   id=$(uuidgen | tr '[:upper:]' '[:lower:]')
   echo "$id" > "$last_session"
   tmux has-session -t "=$tmux_session" 2>/dev/null || tmux new-session -d -s "$tmux_session" -c "$root"
-  window=$(tmux new-window -d -P -F '#{window_id}' -t "=$tmux_session:" -n "$name" -c "$root" \
-    claude --session-id "$id" --remote-control "$name queue $(date +%H:%M)" \
+  window=$(tmux new-window -d -P -F '#{window_id}' -t "=$tmux_session:" -n "$title" -c "$root" \
+    claude --session-id "$id" --remote-control "$name ${next_issue:+#$next_issue }queue $(date +%H:%M)" \
       --dangerously-skip-permissions "$prompt")
   say "session $id in tmux window $tmux_session:$window; tmux attach -t $tmux_session, or open it in the Claude app" >&2
 
@@ -162,12 +168,14 @@ run_watched() {
   jq -rs '[.[] | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text] | last // ""' "$transcript"
 }
 
-# Resume the session that opened PR $2 in its own window so it can work through the Codex review.
-# Runs in the background; ends after 5 idle minutes (the session is done polling), when the PR
-# leaves the open state, or after 90 minutes.
+# Resume the session that opened PR $2 for issue $3 in its own window so it can work through the
+# Codex review. Runs in the background; ends after 5 idle minutes (the session is done polling),
+# when the PR leaves the open state, or after 90 minutes.
 babysit_pr() {
-  local id=$1 pr=$2 window status waited=0 idle_polls=0
-  window=$(tmux new-window -d -P -F '#{window_id}' -t "=$tmux_session:" -n "$name review" -c "$root"     claude --resume "$id" --dangerously-skip-permissions \
+  local id=$1 pr=$2 title=${3:+#$3} window status waited=0 idle_polls=0
+  title="${title:-$name} review"
+  window=$(tmux new-window -d -P -F '#{window_id}' -t "=$tmux_session:" -n "$title" -c "$root" \
+    claude --resume "$id" --dangerously-skip-permissions \
       "Babysit the review of $pr: run step 7 of /work-queue now.")
   say "babysitting $pr in tmux window $tmux_session:$window (session $id)" >&2
   while (( waited < 5400 && idle_polls < 10 )); do
@@ -191,7 +199,7 @@ while true; do
     if $dry_run; then
       say "work found; would run /work-queue"
     else
-      say "work found; running $prompt"
+      say "work found${next_issue:+ (#$next_issue)}; running $prompt"
       started_at=$(date -u +%FT%TZ)
       if out=$($run | tee -a "$log"); then
         if $babysit; then
@@ -200,7 +208,7 @@ while true; do
             -q "[.[] | select(.createdAt >= \"$started_at\")] | sort_by(.createdAt) | last | .number // empty" 2>/dev/null || true)
           [[ -n $pr ]] || pr=$(grep -oE 'https://[^ )>]+/pull/[0-9]+' <<<"$out" | tail -1 || true)
           sid=$(cat "$last_session")
-          if [[ -n $pr ]]; then babysit_pr "$sid" "$pr" & fi
+          if [[ -n $pr ]]; then babysit_pr "$sid" "$pr" "$next_issue" & fi
         fi
         # Drain straight on to the next issue unless the queue reported empty.
         if ! $once && ! grep -qi "queue empty" <<<"$out"; then continue; fi
