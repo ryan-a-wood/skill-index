@@ -45,11 +45,11 @@ This skill owns two labels beyond the triage five. If `triage-labels.md` lacks e
 
 6. **Report.** Leave the worktree in place so the user can inspect it and push follow-up fixes. Report the issue number, the outcome, the PR link, and the worktree path.
 
-7. **Babysit the review.** Run this only when told to babysit a PR (`bin/agent-listener --babysit` resumes the session with that instruction once a run is over), and only if you can receive PR events (the `subscribe_pr_activity` tool). A normal run ends after step 6. Subscribe to the PR and handle Codex's review in rounds, working in the worktree:
+7. **Babysit the review.** Run this only when told to babysit a PR (`bin/agent-listener --babysit` resumes the session with that instruction once a run is over). A normal run ends after step 6. Poll the PR about once a minute (wait with `ScheduleWakeup` or a background `sleep 60`, never a long foreground sleep) and handle Codex's review in rounds, working in the worktree. Read unresolved review threads with `gh api graphql` and Codex's reactions with `gh api repos/{owner}/{repo}/issues/<n>/reactions`:
    - Act only on unresolved threads authored by `chatgpt-codex-connector`. Leave human comments for the human.
    - For each one, fix it, run the project's checks, push, reply on the thread with the commit SHA, and resolve it. If the push fails over SSH, push over HTTPS with the `gh` credential helper.
    - Codex reviews only when a PR opens, goes from draft to ready, or gets an `@codex review` comment, so after pushing fixes comment `@codex review` to get the next round.
-   - Stop when Codex reacts 👍 or leaves no unresolved threads, when the PR is merged or closed, after 3 rounds, or after 60 minutes with no Codex activity. On a cap, label the PR `ready-for-human` if it isn't already and comment what is still open.
-   - Unsubscribe when you stop, and report the rounds taken and anything left open.
+   - Stop polling when Codex reacts 👍 or leaves no unresolved threads, when the PR is merged or closed, after 3 rounds, or after 60 minutes with no Codex activity. On a cap, label the PR `ready-for-human` if it isn't already and comment what is still open.
+   - Report the rounds taken and anything left open, then stop and go idle; the listener closes the window after 5 idle minutes.
 
 The run is done when the picked issue carries either an open PR labelled `ready-for-human` or the `ready-for-human` label with a blocker comment, and its worktree is left in place. A babysit run is done once step 7's stop conditions are met.

@@ -7,11 +7,13 @@
 # Remote Control on, so you can follow or steer it with `tmux attach -t agents` or from the
 # Claude app. The window closes once the session has sat idle for a minute.
 # --babysit (implies --watch) resumes a session that opened a PR in its own window to handle the
-# Codex review (step 7 of /work-queue), in the background so the queue keeps draining. The window
-# closes when the PR is merged or closed, or after 90 minutes.
+# Codex review (step 7 of /work-queue), in the background so the queue keeps draining. The session
+# polls the PR every minute; the window closes once it has sat idle for 5 minutes, when the PR is
+# merged or closed, or after 90 minutes.
 # DIR defaults to the current directory and must be set up with /setup-matt-pocock-skills.
 # The tracker is read from docs/agents/issue-tracker.md. GitHub, GitLab and local-markdown
-# trackers are checked from bash before Claude starts; any other tracker (Linear, Jira, ...)
+# trackers are checked from bash before Claude starts (GitHub also skips blocked, assigned and
+# spec issues, so no session starts for blocked work); any other tracker (Linear, Jira, ...)
 # starts a run every interval and lets /work-queue check.
 set -euo pipefail
 
@@ -66,13 +68,31 @@ case "$tracker" in
   gitlab) command -v glab >/dev/null || die "tracker is GitLab but glab isn't installed" ;;
 esac
 
-# Exit 0 when the queue probably has an issue to pick. Blocked tickets still count;
-# /work-queue checks blockers and reports "queue empty", which sends us back to sleep.
+# Exit 0 when the queue has an issue /work-queue would pick: no spec label, no assignee, no
+# open blockers. On GitHub that is checked here, so a queue of blocked tickets never starts
+# a session. Other trackers can't check blockers from bash; /work-queue does and reports
+# "queue empty", which sends us back to sleep.
 has_work() {
   case "$tracker" in
     github)
-      [[ $(gh issue list --state open --label "$ready" --json labels \
-        -q '[.[] | select(all(.labels[]; .name != "spec"))] | length') -gt 0 ]] ;;
+      local candidates open
+      # Native dependencies (blocked_by counts open blockers only) plus the body-line fallback.
+      candidates=$(gh api --paginate "repos/{owner}/{repo}/issues?state=open&labels=$ready&per_page=100" \
+        --jq '.[] | select(.pull_request == null and .assignee == null
+            and all(.labels[]; .name != "spec")
+            and ((.issue_dependencies_summary.blocked_by // 0) == 0))
+          | [.number, ((.body // "") | split("\n") | map(select(test("^\\s*Blocked by:"; "i"))) | first // "")]
+          | @tsv') || return 0   # API trouble: let /work-queue decide
+      [[ -n $candidates ]] || return 1
+      open=$(gh issue list --state open --limit 500 --json number -q '.[].number')
+      local num line ref
+      while IFS=$'\t' read -r num line; do
+        for ref in $(grep -oE '#[0-9]+' <<<"$line" || true); do
+          grep -qx "${ref#\#}" <<<"$open" && continue 2
+        done
+        return 0
+      done <<<"$candidates"
+      return 1 ;;
     gitlab)
       [[ $(glab issue list --label "$ready" --not-label spec --output json | tr -d '[:space:]') != "[]" ]] ;;
     "local markdown")
@@ -141,17 +161,20 @@ run_watched() {
 }
 
 # Resume the session that opened PR $2 in its own window so it can work through the Codex review.
-# Runs in the background; ends when the PR leaves the open state or after 90 minutes.
+# Runs in the background; ends after 5 idle minutes (the session is done polling), when the PR
+# leaves the open state, or after 90 minutes.
 babysit_pr() {
-  local id=$1 pr=$2 window waited=0
+  local id=$1 pr=$2 window status waited=0 idle_polls=0
   window=$(tmux new-window -d -P -F '#{window_id}' -t "=$tmux_session:" -n "$name review" -c "$root"     claude --resume "$id" --dangerously-skip-permissions \
       "Babysit the review of $pr: run step 7 of /work-queue now.")
   say "babysitting $pr in tmux window $tmux_session:$window (session $id)" >&2
-  while (( waited < 5400 )); do
+  while (( waited < 5400 && idle_polls < 10 )); do
     sleep 30
     waited=$((waited + 30))
     tmux list-windows -a -F '#{window_id}' | grep -qx "$window" || { say "babysit window for $pr closed" >&2; return; }
     [[ $(gh pr view "$pr" --json state -q .state 2>/dev/null || echo OPEN) == OPEN ]] || break
+    status=$(claude agents --json 2>/dev/null | jq -r --arg id "$id" '.[] | select(.sessionId == $id) | .status' || true)
+    if [[ $status == idle ]]; then idle_polls=$((idle_polls + 1)); else idle_polls=0; fi
   done
   tmux kill-window -t "$window" 2>/dev/null || true
   say "stopped babysitting $pr" >&2
